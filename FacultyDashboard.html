@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Dashboard</title>
+    <style>
+        :root {
+            --primary-color: #6a1b9a;
+            --primary-dark: #4a148c;
+            --success-color: #2e7d32;
+            --success-dark: #1b5e20;
+            --light-bg: #f8f8f8;
+            --white: #ffffff;
+            --border-color: #d1c4e9;
+            --text-color: #311b92;
+            --section-bg: #ede7f6;
+            --box-shadow: 0 0 8px rgba(106, 27, 154, 0.1);
+        }
+    
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+    
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+    
+        .dashboard-container {
+            display: flex;
+            min-height: 100vh;
+        }
+    
+        .sidebar {
+            width: 250px;
+            background: linear-gradient(145deg, var(--primary-color), var(--primary-dark));
+            color: var(--white);
+            padding: 20px;
+            position: fixed;
+            height: 100%;
+        }
+    
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+            flex-grow: 1;
+        }
+    
+        .sidebar h2 {
+            margin: 0 0 30px;
+            text-align: center;
+        }
+    
+        .sidebar a {
+            color: var(--white);
+            text-decoration: none;
+            display: block;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+    
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: var(--primary-dark);
+            transform: translateX(5px);
+        }
+    
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: var(--primary-dark);
+            color: var(--white);
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 20px;
+        }
+    
+        .content-section {
+            background: var(--white);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: var(--box-shadow);
+            margin-bottom: 20px;
+        }
+    
+        .content-section h2 {
+            margin-bottom: 15px;
+            color: var(--primary-dark);
+        }
+    
+        .form-group {
+            margin-bottom: 15px;
+        }
+    
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--primary-dark);
+        }
+    
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid var(--border-color);
+            border-radius: 5px;
+            transition: border-color 0.3s ease;
+        }
+    
+        input:focus, select:focus {
+            border-color: var(--primary-color);
+            outline: none;
+        }
+    
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+        }
+    
+        .btn-primary {
+            background: var(--primary-color);
+            color: var(--white);
+        }
+    
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+    
+        .btn-export {
+            background: var(--success-color);
+            color: var(--white);
+        }
+    
+        .btn-export:hover {
+            background: var(--success-dark);
+            transform: translateY(-2px);
+        }
+    
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border: 2px solid var(--border-color);
+        }
+    
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+    
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid var(--border-color);
+        }
+    
+        th {
+            background: var(--primary-dark);
+            color: var(--white);
+            font-weight: 600;
+        }
+    
+        .analytics-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: var(--section-bg);
+            border-radius: 8px;
+            border: 2px solid var(--border-color);
+        }
+    
+        .analytics-section h3 {
+            margin-bottom: 15px;
+            color: var(--primary-dark);
+        }
+    
+        #subjectsList {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+    
+        .subject-item {
+            background: var(--section-bg);
+            padding: 15px;
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            box-shadow: var(--box-shadow);
+            flex: 1 1 250px;
+            transition: transform 0.3s ease;
+        }
+    
+        .subject-item:hover {
+            transform: translateY(-3px);
+        }
+    
+        .timetable-grid {
+            display: grid;
+            grid-template-columns: 100px repeat(8, 1fr);
+            gap: 1px;
+            background: var(--border-color);
+            border: 2px solid var(--border-color);
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+    
+        .timetable-grid > div {
+            padding: 12px;
+            background: var(--white);
+            text-align: center;
+            border: 1px solid var(--border-color);
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    
+        .timetable-grid .header {
+            background: var(--primary-dark);
+            color: var(--white);
+            font-weight: 600;
+            padding: 15px;
+        }
+    
+        .day {
+            font-weight: bold;
+            background: var(--section-bg);
+        }
+    
+        .slot.lunchbreak {
+            background: #f8bbd0;
+            color: #880e4f;
+            font-style: italic;
+        }
+    
+        @media (max-width: 768px) {
+            .dashboard-container {
+                flex-direction: column;
+            }
+    
+            .sidebar {
+                width: 100%;
+                position: static;
+                height: auto;
+                background: var(--primary-color);
+            }
+    
+            .main-content {
+                margin-left: 0;
+            }
+    
+            .timetable-grid {
+                grid-template-columns: 80px repeat(8, minmax(100px, 1fr));
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="sidebar">
+            <h2>Faculty Dashboard</h2>
+            <a href="#marks" onclick="showSection('marks')">Enter Marks</a>
+            <a href="#timetable" onclick="showSection('timetable')">My Timetable</a>
+            <a href="#subjects" onclick="showSection('subjects')">My Subjects</a>
+            <a href="/">Logout</a>
+        </div>
+        <div class="main-content">
+            <div class="header">Faculty Dashboard</div>
+            <div class="content-section" id="marks">
+                <h2>Enter Marks</h2>
+                <div class="form-group">
+                    <label for="subjectSelect">Select Subject</label>
+                    <select id="subjectSelect" onchange="loadStudents()">
+                        <option value="">Select Subject</option>
+                    </select>
+                </div>
+                <div class="table-container">
+                    <table id="studentsTable">
+                        <thead>
+                            <tr>
+                                <th>Roll Number</th>
+                                <th>Full Name</th>
+                                <th>Assignment 1</th>
+                                <th>Assignment 2</th>
+                                <th>Assignment 3</th>
+                                <th>Total Marks</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="analytics-section" id="analyticsSection">
+                    <h3>Analytics</h3>
+                    <p id="topperInfo">Topper: N/A</p>
+                    <p id="avgAssignment1">Average Assignment 1: N/A</p>
+                    <p id="avgAssignment2">Average Assignment 2: N/A</p>
+                    <p id="avgAssignment3">Average Assignment 3: N/A</p>
+                </div>
+                <button id="send-email-btn" class="btn-primary" onclick="sendEmails()">Send Emails to Students</button>
+                <button id="export-marks-btn" class="btn-export" onclick="exportMarks()">Export Marks</button>
+            </div>
+            <div class="content-section" id="timetable" style="display: none;">
+                <h2>My Timetable</h2>
+                <div id="timetableContainer"></div>
+            </div>
+            <div class="content-section" id="subjects" style="display: none;">
+                <h2>My Subjects</h2>
+                <div id="subjectsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSubjectId = null;
+        const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+        const timeSlots = [
+            '9:30-10:20', '10:20-11:10', '11:20-12:10', '12:10-13:00',
+            'LUNCHBREAK', '13:40-14:30', '14:30-15:20', '15:20-16:10'
+        ];
+
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.style.display = 'none';
+            });
+            // Show the selected section
+            document.getElementById(sectionId).style.display = 'block';
+            // Update active sidebar link
+            document.querySelectorAll('.sidebar a').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelector(`.sidebar a[href="#${sectionId}"]`).classList.add('active');
+
+            // Load timetable if the timetable section is selected
+            if (sectionId === 'timetable') {
+                loadTimetable();
+            }
+        }
+
+        function loadSubjects() {
+            fetch('/api/faculty-subjects')
+                .then(response => response.json())
+                .then(subjects => {
+                    // Populate dropdown
+                    const select = document.getElementById('subjectSelect');
+                    subjects.forEach(subject => {
+                        const option = document.createElement('option');
+                        option.value = subject.subject_id;
+                        option.textContent = subject.subject_name;
+                        select.appendChild(option);
+                    });
+
+                    // Populate My Subjects section
+                    const subjectsList = document.getElementById('subjectsList');
+                    subjectsList.innerHTML = '';
+                    if (subjects.length === 0) {
+                        subjectsList.innerHTML = '<p>No subjects assigned.</p>';
+                    } else {
+                        subjects.forEach(subject => {
+                            const subjectItem = document.createElement('div');
+                            subjectItem.className = 'subject-item';
+                            subjectItem.innerHTML = `
+                                <strong>${subject.subject_name}</strong><br>
+                                Subject ID: ${subject.subject_id}
+                            `;
+                            subjectsList.appendChild(subjectItem);
+                        });
+                    }
+                })
+                .catch(err => console.error('Error loading subjects:', err));
+        }
+
+        function loadStudents() {
+            currentSubjectId = document.getElementById('subjectSelect').value;
+            if (!currentSubjectId) {
+                document.getElementById('studentsTable').querySelector('tbody').innerHTML = '';
+                document.getElementById('topperInfo').textContent = 'Topper: N/A';
+                document.getElementById('avgAssignment1').textContent = 'Average Assignment 1: N/A';
+                document.getElementById('avgAssignment2').textContent = 'Average Assignment 2: N/A';
+                document.getElementById('avgAssignment3').textContent = 'Average Assignment 3: N/A';
+                return;
+            }
+
+            fetch(`/api/subject-students?subject_id=${currentSubjectId}`)
+                .then(response => response.json())
+                .then(students => {
+                    const tbody = document.getElementById('studentsTable').querySelector('tbody');
+                    tbody.innerHTML = '';
+                    students.forEach(student => {
+                        const totalMarks = (parseFloat(student.marks['Assignment 1']) || 0) +
+                                          (parseFloat(student.marks['Assignment 2']) || 0) +
+                                          (parseFloat(student.marks['Assignment 3']) || 0);
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${student.roll_number}</td>
+                            <td>${student.full_name}</td>
+                            <td><input type="number" min="0" max="40" value="${student.marks['Assignment 1'] || ''}" onchange="validateMark(this, 'Assignment 1', 40)"></td>
+                            <td><input type="number" min="0" max="40" value="${student.marks['Assignment 2'] || ''}" onchange="validateMark(this, 'Assignment 2', 40)"></td>
+                            <td><input type="number" min="0" max="40" value="${student.marks['Assignment 3'] || ''}" onchange="validateMark(this, 'Assignment 3', 40)"></td>
+                            <td>${totalMarks || 'N/A'}</td>
+                            <td><button onclick="saveMarks('${student.roll_number}')">Save</button></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+
+                    fetch(`/api/subject-analytics?subject_id=${currentSubjectId}`)
+                        .then(response => response.json())
+                        .then(analytics => {
+                            document.getElementById('topperInfo').textContent = `Topper: ${analytics.topper ? `${analytics.topper.full_name} (${analytics.topper.totalMarks})` : 'N/A'}`;
+                            document.getElementById('avgAssignment1').textContent = `Average Assignment 1: ${analytics.avgAssignment1 ? analytics.avgAssignment1.toFixed(2) : 'N/A'}`;
+                            document.getElementById('avgAssignment2').textContent = `Average Assignment 2: ${analytics.avgAssignment2 ? analytics.avgAssignment2.toFixed(2) : 'N/A'}`;
+                            document.getElementById('avgAssignment3').textContent = `Average Assignment 3: ${analytics.avgAssignment3 ? analytics.avgAssignment3.toFixed(2) : 'N/A'}`;
+                        })
+                        .catch(err => console.error('Error loading analytics:', err));
+                })
+                .catch(err => console.error('Error loading students:', err));
+        }
+
+        function validateMark(input, assessmentType, max) {
+            let value = parseFloat(input.value);
+            if (isNaN(value) || value < 0) {
+                input.value = '';
+                alert(`${assessmentType} mark must be at least 0.`);
+            } else if (value > max) {
+                input.value = max;
+                alert(`${assessmentType} mark cannot exceed ${max}.`);
+            }
+        }
+
+        function saveMarks(rollNumber) {
+            const row = Array.from(document.querySelectorAll('#studentsTable tbody tr'))
+                .find(r => r.cells[0].textContent === rollNumber);
+            const marks = {
+                'Assignment 1': row.cells[2].querySelector('input').value,
+                'Assignment 2': row.cells[3].querySelector('input').value,
+                'Assignment 3': row.cells[4].querySelector('input').value
+            };
+
+            const totalMarks = (parseFloat(marks['Assignment 1']) || 0) +
+                              (parseFloat(marks['Assignment 2']) || 0) +
+                              (parseFloat(marks['Assignment 3']) || 0);
+            if (totalMarks > 40) {
+                alert(`Total marks (${totalMarks}) exceed the limit of 40. Please adjust the values.`);
+                return;
+            }
+
+            fetch('/api/save-marks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roll_number: rollNumber, subject_id: currentSubjectId, marks })
+            }).then(response => {
+                if (response.ok) {
+                    alert('Marks saved successfully');
+                    loadStudents();
+                } else {
+                    response.json().then(data => alert(`Failed to save marks: ${data.error}`));
+                }
+            }).catch(err => console.error('Error saving marks:', err));
+        }
+
+        function sendEmails() {
+            const sendButton = document.getElementById('send-email-btn');
+            if (!currentSubjectId) {
+                alert('Please select a subject first');
+                return;
+            }
+            sendButton.disabled = true;
+            fetch(`/api/send-marks-email?subject_id=${currentSubjectId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).then(response => {
+                if (response.ok) {
+                    alert('Emails sent successfully');
+                } else {
+                    response.json().then(data => alert(`Failed to send emails: ${data.error}`));
+                }
+                sendButton.disabled = false;
+            }).catch(err => {
+                console.error('Error sending emails:', err);
+                alert('Error sending emails. If the daily limit was exceeded, try again after 24 hours.');
+                sendButton.disabled = false;
+            });
+        }
+
+        function exportMarks() {
+            if (!currentSubjectId) {
+                alert('Please select a subject first');
+                return;
+            }
+            const subjectName = document.getElementById('subjectSelect').selectedOptions[0].text;
+            fetch(`/api/export-marks?subject_id=${currentSubjectId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(data => { throw new Error(data.error); });
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${subjectName}_marks.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(err => {
+                    console.error('Error exporting marks:', err);
+                    alert(`Failed to export marks: ${err.message}`);
+                });
+        }
+        function loadTimetable() {
+    fetch('/api/faculty-timetable')
+        .then(response => response.json())
+        .then(timetable => {
+            const container = document.getElementById('timetableContainer');
+            if (!timetable.schedule || timetable.schedule.length === 0) {
+                container.innerHTML = '<p>No timetable available.</p>';
+                return;
+            }
+
+            // Create the grid with proper headers
+            let timetableHTML = `
+                <div class="timetable-grid">
+                    <!-- Empty cell in top-left corner -->
+                    <div class="header">Day/Time</div>
+                    
+                    <!-- Time slot headers -->
+                    ${timeSlots.map(slot => `<div class="header">${slot}</div>`).join('')}
+                    
+                    <!-- Days and schedule cells -->
+                    ${days.map((day, dayIndex) => `
+                        <div class="day">${day}</div>
+                        ${timeSlots.map((slot, slotIndex) => {
+                            if (slot === 'LUNCHBREAK') {
+                                return `<div class="slot lunchbreak">LUNCHBREAK</div>`;
+                            } else {
+                                const slotData = timetable.schedule.find(s => 
+                                    s.day === day && s.slot === (slotIndex + 1));
+                                const displayText = slotData ? 
+                                    (slotData.semester ? 
+                                        `${slotData.subject} (Sem ${slotData.semester})` : 
+                                        slotData.subject) : 
+                                    'Free';
+                                return `<div class="slot">${displayText}</div>`;
+                            }
+                        }).join('')}
+                    `).join('')}
+                </div>
+            `;
+            
+            container.innerHTML = timetableHTML;
+        })
+        .catch(err => {
+            console.error('Error loading timetable:', err);
+            document.getElementById('timetableContainer').innerHTML = '<p>Error loading timetable.</p>';
+        });
+}
+
+        window.onload = function() {
+            showSection('marks'); // Show marks section by default
+            loadSubjects();
+            fetch('/api/faculty-details')
+                .then(response => response.json())
+                .then(data => {
+                    document.querySelector('.header').innerHTML = `
+                        Welcome, ${data.full_name}<br>
+                        Department: ${data.dept_name}
+                    `;
+                })
+                .catch(err => console.error('Error loading faculty details:', err));
+        };
+    </script>
+</body>
+</html>

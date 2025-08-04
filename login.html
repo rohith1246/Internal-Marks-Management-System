@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Balaji Institute of Technology & Science</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #e0eafc, #cfdef3); /* Gradient background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+            width: 350px;
+            text-align: center;
+            position: relative;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .header-image {
+            width: 100%;
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 20px;
+        }
+        h2 {
+            margin: 0 0 20px;
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: #555;
+            font-weight: 500;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        input:focus, select:focus {
+            border-color: #007bff;
+            outline: none;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .error {
+            color: #e63946;
+            margin-top: 10px;
+            font-size: 14px;
+            display: none;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 400px) {
+            .login-container {
+                width: 90%;
+                padding: 20px;
+            }
+            h2 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <!-- Adding the institute's banner image -->
+        <img src="/image" alt="Balaji Institute Banner" class="header-image">
+       
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="role">Role</label>
+                <select id="role" name="role" required>
+                    <option value="">Select Role</option>
+                    <option value="admin">Admin</option>
+                    <option value="hod">HOD</option>
+                    <option value="faculty">Faculty</option>
+                    <option value="student">Student</option>
+                </select>
+            </div>
+            <button type="submit">Login</button>
+            <!-- Add this link below the login button -->
+<p><a href="#" id="forgotPasswordLink">Forgot Password?</a></p>
+            <p class="error" id="errorMessage"></p>
+        </form>
+    </div>
+    <!-- Add this form below the existing login form -->
+<div id="forgotPasswordForm" style="display: none;">
+    <form id="forgotPasswordSubmit">
+        <div class="form-group">
+            <label for="forgotEmail">Email</label>
+            <input type="email" id="forgotEmail" name="email" required>
+        </div>
+        <div class="form-group">
+            <label for="forgotRole">Role</label>
+            <select id="forgotRole" name="role" required>
+                <option value="">Select Role</option>
+                <option value="admin">Admin</option>
+                <option value="hod">HOD</option>
+                <option value="faculty">Faculty</option>
+                <option value="student">Student</option>
+            </select>
+        </div>
+        <button type="submit">Send OTP</button>
+    </form>
+    <form id="otpForm" style="display: none;">
+        <div class="form-group">
+            <label for="otp">Enter OTP</label>
+            <input type="text" id="otp" name="otp" required>
+        </div>
+        <div class="form-group">
+            <label for="newPassword">New Password</label>
+            <input type="password" id="newPassword" name="newPassword" required>
+        </div>
+        <button type="submit">Reset Password</button>
+    </form>
+</div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const role = document.getElementById('role').value;
+            const errorMessage = document.getElementById('errorMessage');
+
+            fetch('/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, role })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = data.redirect;
+                } else {
+                    errorMessage.textContent = data.error;
+                    errorMessage.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                console.error('Error during login:', err);
+                errorMessage.textContent = 'An error occurred, please try again';
+                errorMessage.style.display = 'block';
+            });
+        });
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+    const loginForm = document.getElementById('loginForm');
+    const forgotPasswordSubmit = document.getElementById('forgotPasswordSubmit');
+    const otpForm = document.getElementById('otpForm');
+    const errorMessage = document.getElementById('errorMessage');
+
+    forgotPasswordLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        loginForm.style.display = 'none';
+        forgotPasswordForm.style.display = 'block';
+    });
+
+    forgotPasswordSubmit.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const email = document.getElementById('forgotEmail').value;
+        const role = document.getElementById('forgotRole').value;
+
+        fetch('/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, role })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                forgotPasswordSubmit.style.display = 'none';
+                otpForm.style.display = 'block';
+            } else {
+                errorMessage.textContent = data.error;
+                errorMessage.style.display = 'block';
+            }
+        })
+        .catch(err => {
+            errorMessage.textContent = 'An error occurred, please try again';
+            errorMessage.style.display = 'block';
+        });
+    });
+
+    otpForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const otp = document.getElementById('otp').value;
+        const newPassword = document.getElementById('newPassword').value;
+
+        fetch('/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ otp, newPassword })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = data.redirect;
+            } else {
+                errorMessage.textContent = data.error;
+                errorMessage.style.display = 'block';
+            }
+        })
+        .catch(err => {
+            errorMessage.textContent = 'An error occurred, please try again';
+            errorMessage.style.display = 'block';
+        });
+    });
+    </script>
+</body>
+</html>
