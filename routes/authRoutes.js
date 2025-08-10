@@ -113,7 +113,6 @@ router.post('/log', (req, res) => {
     console.log('Login attempt:', { username, password, role });
 
     if (!username || !password || !role) {
-        console.log('Missing credentials:', { username, password, role });
         return res.status(400).json({ success: false, error: 'Missing username, password, or role' });
     }
 
@@ -124,30 +123,33 @@ router.post('/log', (req, res) => {
             return res.status(500).json({ success: false, error: 'Database connection failed' });
         }
 
-        let query, params, dashboard;
+        let query, params, dashboard, idField;
         switch (role) {
             case 'admin':
-                query = "SELECT * FROM admin WHERE adminid = ? AND password = ?";
+                query = "SELECT adminid AS userId FROM admin WHERE adminid = ? AND password = ?";
                 params = [username, password];
                 dashboard = "/Admin";
+                idField = 'userId';
                 break;
             case 'hod':
-                query = "SELECT * FROM department_hod WHERE hod_id = ? AND hod_password = ?";
+                query = "SELECT hod_id AS userId, dept_id FROM department_hod WHERE hod_id = ? AND hod_password = ?";
                 params = [username, password];
                 dashboard = "/HOD";
+                idField = 'userId';
                 break;
             case 'faculty':
-                query = "SELECT * FROM faculty WHERE faculty_id = ? AND password = ?";
+                query = "SELECT faculty_id AS userId FROM faculty WHERE faculty_id = ? AND password = ?";
                 params = [username, password];
                 dashboard = "/FacultyDashboard";
+                idField = 'userId';
                 break;
             case 'student':
-                query = "SELECT * FROM students WHERE roll_number = ? AND password = ?";
+                query = "SELECT roll_number AS userId FROM students WHERE roll_number = ? AND password = ?";
                 params = [username, password];
                 dashboard = "/StudentDashboard";
+                idField = 'userId';
                 break;
             default:
-                console.log('Invalid role:', role);
                 return res.status(400).json({ success: false, error: 'Invalid role' });
         }
 
@@ -159,18 +161,24 @@ router.post('/log', (req, res) => {
                 return res.status(500).json({ success: false, error: 'Database query failed' });
             }
 
-            console.log('Query result:', result);
             if (result.length > 0) {
-                // Set session data based on role
-                let sessionData = { id: username, role: role };
+                // ✅ Save user info in session
+                let sessionData = { id: result[0][idField], role: role };
                 if (role === 'hod') {
-                    sessionData.dept_id = result[0].dept_id; // Include department ID for HOD
+                    sessionData.dept_id = result[0].dept_id;
                 }
                 req.session.user = sessionData;
+
                 console.log('Session set:', req.session.user);
-                res.json({ success: true, redirect: dashboard });
+
+                // ✅ Return userId so frontend can call face verification
+                res.json({
+                    success: true,
+                    redirect: dashboard,
+                    userId: result[0][idField],
+                    role: role
+                });
             } else {
-                console.log('Login failed: No matching user found');
                 res.status(401).json({ success: false, error: 'Invalid username or password, please try again' });
             }
             con.end();
@@ -178,33 +186,6 @@ router.post('/log', (req, res) => {
     });
 });
 
-// Handle Admin Registration
-router.post('/reg', (req, res) => {
-    const { fullName, adminId, email, password } = req.body;
-
-    if (!fullName || !adminId || !email || !password) {
-        return res.status(400).json({ success: false, error: 'All fields are required' });
-    }
-
-    const con = getConnection();
-    con.connect(err => {
-        if (err) {
-            return res.status(500).json({ success: false, error: 'Database connection failed' });
-        }
-
-        const query = "INSERT INTO admin (adminid, fullname, email, password) VALUES (?, ?, ?, ?)";
-        const params = [adminId, fullName, email, password];
-
-        con.query(query, params, (err, result) => {
-            if (err) {
-                return res.status(500).json({ success: false, error: 'Registration failed' });
-            }
-
-            res.json({ success: true, message: 'Admin registered successfully', redirect: '/' });
-            con.end();
-        });
-    });
-});
 // Forgot Password - Send OTP
 router.post('/forgot-password', (req, res) => {
     const { email, role } = req.body;

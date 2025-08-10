@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #e0eafc, #cfdef3); /* Gradient background */
+            background: linear-gradient(135deg, #e0eafc, #cfdef3);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -22,7 +22,6 @@
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
             width: 350px;
             text-align: center;
-            position: relative;
             animation: fadeIn 0.5s ease-in-out;
         }
         @keyframes fadeIn {
@@ -40,26 +39,17 @@
             font-size: 24px;
             font-weight: 600;
         }
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 14px;
-            color: #555;
-            font-weight: 500;
-        }
+        .form-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; font-weight: 500; }
         input, select {
             width: 100%;
             padding: 10px;
             margin-bottom: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
-            box-sizing: border-box;
             font-size: 14px;
             transition: border-color 0.3s ease;
+            box-sizing: border-box;
         }
         input:focus, select:focus {
             border-color: #007bff;
@@ -78,30 +68,75 @@
             font-weight: 500;
             transition: background 0.3s ease;
         }
-        button:hover {
-            background: #0056b3;
-        }
-        .error {
-            color: #e63946;
-            margin-top: 10px;
-            font-size: 14px;
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .error { color: #e63946; margin-top: 10px; font-size: 14px; display: none; }
+        
+        /* Face Verification Modal */
+        #faceVerifyModal {
             display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
         }
-        /* Responsive adjustments */
-        @media (max-width: 400px) {
-            .login-container {
-                width: 90%;
-                padding: 20px;
-            }
-            h2 {
-                font-size: 20px;
-            }
+        #faceVerifyModal .modal-content {
+            background: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
         }
+        #verifyCamera {
+            width: 100%;
+            max-width: 320px;
+            height: auto;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .modal-buttons {
+            margin-top: 20px;
+        }
+        .modal-buttons button {
+            margin: 0 10px;
+            width: auto;
+            padding: 10px 20px;
+            min-width: 100px;
+        }
+        #cancelVerifyBtn {
+            background: #6c757d;
+        }
+        #cancelVerifyBtn:hover {
+            background: #5a6268;
+        }
+        .debug-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .status-success { color: #28a745; }
+        .status-error { color: #dc3545; }
+        .status-warning { color: #ffc107; }
+        .status-info { color: #17a2b8; }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <!-- Adding the institute's banner image -->
         <img src="/image" alt="Balaji Institute Banner" class="header-image">
        
         <form id="loginForm">
@@ -123,51 +158,54 @@
                     <option value="student">Student</option>
                 </select>
             </div>
-            <button type="submit">Login</button>
-            <!-- Add this link below the login button -->
-<p><a href="#" id="forgotPasswordLink">Forgot Password?</a></p>
+            <button type="submit" id="loginBtn">Login</button>
+            <p><a href="#" id="forgotPasswordLink">Forgot Password?</a></p>
             <p class="error" id="errorMessage"></p>
         </form>
     </div>
-    <!-- Add this form below the existing login form -->
-<div id="forgotPasswordForm" style="display: none;">
-    <form id="forgotPasswordSubmit">
-        <div class="form-group">
-            <label for="forgotEmail">Email</label>
-            <input type="email" id="forgotEmail" name="email" required>
+
+    <!-- Face Verification Modal -->
+    <div id="faceVerifyModal">
+        <div class="modal-content">
+            <h3>Face Verification Required</h3>
+            <p>Please position your face clearly in the camera</p>
+            <video id="verifyCamera" autoplay playsinline></video>
+            <div class="modal-buttons">
+                <button id="verifyBtn" style="background:#28a745;">Verify Face</button>
+                <button id="cancelVerifyBtn">Cancel</button>
+            </div>
+            <p id="faceVerifyStatus" style="margin-top:15px; font-weight:bold;"></p>
+            <div id="debugInfo" class="debug-info" style="display:none;"></div>
         </div>
-        <div class="form-group">
-            <label for="forgotRole">Role</label>
-            <select id="forgotRole" name="role" required>
-                <option value="">Select Role</option>
-                <option value="admin">Admin</option>
-                <option value="hod">HOD</option>
-                <option value="faculty">Faculty</option>
-                <option value="student">Student</option>
-            </select>
-        </div>
-        <button type="submit">Send OTP</button>
-    </form>
-    <form id="otpForm" style="display: none;">
-        <div class="form-group">
-            <label for="otp">Enter OTP</label>
-            <input type="text" id="otp" name="otp" required>
-        </div>
-        <div class="form-group">
-            <label for="newPassword">New Password</label>
-            <input type="password" id="newPassword" name="newPassword" required>
-        </div>
-        <button type="submit">Reset Password</button>
-    </form>
-</div>
+    </div>
 
     <script>
+        // Configuration
+        const FACE_API_BASE_URL = 'http://127.0.0.1:5001'; // Flask service URL
+        let videoStream = null;
+        let currentUserId = null;
+        let currentUserType = null;
+        let currentRedirectUrl = null;
+
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            const username = document.getElementById('username').value;
+            const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
             const role = document.getElementById('role').value;
             const errorMessage = document.getElementById('errorMessage');
+            const loginBtn = document.getElementById('loginBtn');
+
+            // Clear previous error
+            errorMessage.style.display = 'none';
+
+            if (!username || !password || !role) {
+                showError('Please fill in all fields');
+                return;
+            }
+
+            // Disable login button
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
 
             fetch('/log', {
                 method: 'POST',
@@ -177,81 +215,229 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    window.location.href = data.redirect;
+                    if (role === 'admin') {
+                        window.location.href = data.redirect;
+                    } else {
+                        startFaceVerification(data.userId, role, data.redirect);
+                    }
                 } else {
-                    errorMessage.textContent = data.error;
-                    errorMessage.style.display = 'block';
+                    showError(data.error || 'Login failed');
                 }
             })
             .catch(err => {
                 console.error('Error during login:', err);
-                errorMessage.textContent = 'An error occurred, please try again';
-                errorMessage.style.display = 'block';
+                showError('Network error. Please check your connection.');
+            })
+            .finally(() => {
+                // Re-enable login button
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
             });
         });
-        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
-    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
-    const loginForm = document.getElementById('loginForm');
-    const forgotPasswordSubmit = document.getElementById('forgotPasswordSubmit');
-    const otpForm = document.getElementById('otpForm');
-    const errorMessage = document.getElementById('errorMessage');
 
-    forgotPasswordLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        loginForm.style.display = 'none';
-        forgotPasswordForm.style.display = 'block';
-    });
-
-    forgotPasswordSubmit.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const email = document.getElementById('forgotEmail').value;
-        const role = document.getElementById('forgotRole').value;
-
-        fetch('/forgot-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, role })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                forgotPasswordSubmit.style.display = 'none';
-                otpForm.style.display = 'block';
-            } else {
-                errorMessage.textContent = data.error;
-                errorMessage.style.display = 'block';
-            }
-        })
-        .catch(err => {
-            errorMessage.textContent = 'An error occurred, please try again';
+        function showError(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            errorMessage.textContent = message;
             errorMessage.style.display = 'block';
-        });
-    });
+        }
 
-    otpForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const otp = document.getElementById('otp').value;
-        const newPassword = document.getElementById('newPassword').value;
+        function updateStatus(message, type = 'info') {
+            const status = document.getElementById('faceVerifyStatus');
+            status.textContent = message;
+            status.className = `status-${type}`;
+        }
 
-        fetch('/reset-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ otp, newPassword })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                window.location.href = data.redirect;
-            } else {
-                errorMessage.textContent = data.error;
-                errorMessage.style.display = 'block';
+        function showDebugInfo(info) {
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.innerHTML = `<strong>Debug Info:</strong><br>${info}`;
+            debugInfo.style.display = 'block';
+        }
+
+        function startFaceVerification(userId, userType, redirectUrl) {
+            console.log(`Starting face verification for ${userType}_${userId}`);
+            
+            // Store values for later use
+            currentUserId = userId;
+            currentUserType = userType;
+            currentRedirectUrl = redirectUrl;
+            
+            const modal = document.getElementById('faceVerifyModal');
+            const video = document.getElementById('verifyCamera');
+            const verifyBtn = document.getElementById('verifyBtn');
+            const cancelBtn = document.getElementById('cancelVerifyBtn');
+            const debugInfo = document.getElementById('debugInfo');
+
+            // Reset UI
+            modal.style.display = 'flex';
+            debugInfo.style.display = 'none';
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Verify Face';
+            updateStatus('Initializing camera...', 'info');
+
+            // Start camera
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'user'
+                } 
+            })
+            .then(stream => {
+                videoStream = stream;
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    updateStatus('Camera ready. Position your face and click Verify Face.', 'info');
+                    verifyBtn.disabled = false;
+                };
+            })
+            .catch(err => {
+                console.error('Camera error:', err);
+                updateStatus('Camera access denied or not available', 'error');
+                showDebugInfo(`Camera Error: ${err.message}<br>Please allow camera access and refresh the page.`);
+            });
+
+            // Verify button handler
+            verifyBtn.onclick = performFaceVerification;
+
+            // Cancel button handler
+            cancelBtn.onclick = () => {
+                stopCamera();
+                modal.style.display = 'none';
+                showError('Face verification cancelled');
+            };
+        }
+
+        async function performFaceVerification() {
+            const video = document.getElementById('verifyCamera');
+            const verifyBtn = document.getElementById('verifyBtn');
+
+            if (!video.videoWidth || !video.videoHeight) {
+                updateStatus('Camera not ready. Please wait.', 'error');
+                return;
             }
-        })
-        .catch(err => {
-            errorMessage.textContent = 'An error occurred, please try again';
-            errorMessage.style.display = 'block';
+
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Analyzing...';
+            updateStatus('Capturing and analyzing face...', 'info');
+
+            try {
+                // Capture image
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+                console.log(`Sending verification request for ${currentUserType}_${currentUserId}`);
+                console.log(`Image data size: ${imageData.length} characters`);
+                console.log(`Image dimensions: ${canvas.width}x${canvas.height}`);
+
+                // Send to Flask face verification service
+                const response = await fetch(`${FACE_API_BASE_URL}/api/face-verify`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        userId: currentUserId, 
+                        userType: currentUserType, 
+                        imageData: imageData 
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
+                }
+
+                const result = await response.json();
+                console.log('Face verification response:', result);
+
+                // Show debug info
+                if (result.debug) {
+                    showDebugInfo(result.debug);
+                }
+
+                if (result.success && result.verified) {
+                    updateStatus('✅ Face verified successfully! Redirecting...', 'success');
+                    
+                    stopCamera();
+                    
+                    setTimeout(() => {
+                        document.getElementById('faceVerifyModal').style.display = 'none';
+                        window.location.href = currentRedirectUrl;
+                    }, 2000);
+                } else {
+                    let errorMsg = '❌ Face verification failed';
+                    if (result.error) {
+                        errorMsg += `: ${result.error}`;
+                    } else if (result.debug) {
+                        errorMsg += '. See debug info below.';
+                    }
+                    
+                    updateStatus(errorMsg, 'error');
+                    verifyBtn.disabled = false;
+                    verifyBtn.textContent = 'Try Again';
+                }
+
+            } catch (error) {
+                console.error('Face verification error:', error);
+                updateStatus(`❌ Verification error: ${error.message}`, 'error');
+                
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = 'Try Again';
+                
+                // Show connection error debug info
+                showDebugInfo(`
+                    <strong>Connection Error:</strong><br>
+                    Make sure the face verification service is running on ${FACE_API_BASE_URL}<br>
+                    Error: ${error.message}<br><br>
+                    <strong>Troubleshooting:</strong><br>
+                    1. Check if Flask app is running on port 5001<br>
+                    2. Ensure face data files exist in face_data directory<br>
+                    3. Check browser console for more details
+                `);
+            }
+        }
+
+        function stopCamera() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+        }
+
+        // Test connection to face verification service on page load
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch(`${FACE_API_BASE_URL}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Face verification service health check:', data);
+                } else {
+                    console.warn('Face verification service health check failed');
+                }
+            } catch (error) {
+                console.warn('Could not connect to face verification service:', error.message);
+            }
+
+            // Also test the debug endpoint
+            try {
+                const response = await fetch(`${FACE_API_BASE_URL}/debug/face-data`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Available face data:', data);
+                }
+            } catch (error) {
+                console.warn('Could not fetch face data info:', error.message);
+            }
         });
-    });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', stopCamera);
     </script>
 </body>
 </html>

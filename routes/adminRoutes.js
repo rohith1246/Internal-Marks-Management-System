@@ -1023,4 +1023,30 @@ router.post('/verify-faculty-face', (req, res) => {
         res.status(500).json({ error: 'Face verification failed' });
     });
 });
+
+router.post('/api/face-verify', async (req, res) => {
+    const { userId, userType, imageData } = req.body;
+    try {
+        // Compare with registered image using your Python script
+        const registeredImagePath = path.join(__dirname, 'face_data', `${userType}_${userId}.jpg`);
+        const liveImageBase64 = imageData.split(',')[1];
+
+        const { spawn } = require('child_process');
+        const py = spawn('python3', ['face_verification.py', registeredImagePath, liveImageBase64]);
+
+        let output = '';
+        py.stdout.on('data', data => output += data.toString());
+        py.on('close', () => {
+            const result = JSON.parse(output);
+            if (result.match) {
+                res.json({ success: true });
+            } else {
+                res.json({ success: false });
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

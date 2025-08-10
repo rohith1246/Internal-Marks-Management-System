@@ -2,86 +2,326 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Face Registration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Registration - Balaji Institute of Technology & Science</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load browser bundle of face-api.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #e0eafc, #cfdef3);
+        }
+        .registration-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .video-container {
+            position: relative;
+            display: inline-block;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .btn {
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status-message {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-6 rounded-lg shadow-lg text-center">
-        <h2 class="text-xl font-bold mb-4">Face Registration</h2>
-        
-        <video id="video" autoplay playsinline class="mx-auto rounded-lg border"></video>
-        <canvas id="canvas" class="hidden"></canvas>
-        
-        <div class="mt-4">
-            <button id="capture" class="bg-blue-500 text-white px-4 py-2 rounded">Capture Face</button>
-            <button id="submit" class="hidden bg-green-500 text-white px-4 py-2 rounded ml-2">Submit</button>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="registration-container p-8 max-w-md w-full text-center">
+        <div class="mb-6">
+            <h1 class="text-2xl font-bold text-gray-800 mb-2">Face Registration</h1>
+            <p class="text-gray-600 text-sm">Please position your face in the camera frame and capture when ready</p>
         </div>
         
-        <p id="status" class="mt-4 text-sm text-gray-700"></p>
+        <!-- User Info Display -->
+        <div class="bg-gray-50 p-3 rounded-lg mb-6 text-left">
+            <div class="text-sm">
+                <p><strong>User ID:</strong> <span id="displayUserId">-</span></p>
+                <p><strong>Type:</strong> <span id="displayUserType">-</span></p>
+            </div>
+        </div>
+        
+        <!-- Camera Section -->
+        <div class="video-container mb-6">
+            <video id="camera" autoplay playsinline width="350" height="280" 
+                   class="rounded-lg border-2 border-gray-300 bg-gray-100">
+            </video>
+            <canvas id="overlay" class="rounded-lg"></canvas>
+        </div>
+        
+        <!-- Controls -->
+        <div class="space-y-4">
+            <button id="captureBtn" disabled
+                    class="btn w-full bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg disabled:bg-gray-300">
+                <span id="captureText">Starting Camera...</span>
+            </button>
+            
+            <button id="retryBtn" style="display: none;"
+                    class="btn w-full bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg">
+                Try Again
+            </button>
+            
+            <a href="/login.html" 
+               class="btn inline-block w-full bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg text-decoration-none">
+                Back to Login
+            </a>
+        </div>
+        
+        <!-- Status Messages -->
+        <div id="statusContainer"></div>
     </div>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const video = document.getElementById('camera');
-    const captureBtn = document.getElementById('captureBtn');
-    const status = document.getElementById('status');
 
-    // Extract URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const userId = urlParams.get('userId');
-    const userType = urlParams.get('userType');
-    const token = urlParams.get('token');
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const video = document.getElementById('camera');
+            const captureBtn = document.getElementById('captureBtn');
+            const captureText = document.getElementById('captureText');
+            const retryBtn = document.getElementById('retryBtn');
+            const statusContainer = document.getElementById('statusContainer');
+            
+            let faceApiLoaded = false;
+            let cameraReady = false;
+            let detectionInterval = null;
 
-    // Request camera access
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-            video.srcObject = stream;
-            console.log('Camera access granted');
-        })
-        .catch(err => {
-            console.error('Camera access denied:', err);
-            status.innerText = '❌ Camera access denied';
-            status.style.color = 'red';
-        });
+            // Extract URL parameters
+            const params = new URLSearchParams(window.location.search);
+            const userId = params.get('userId');
+            const userType = params.get('userType');
+            const token = params.get('token');
 
-    // Capture image and send to backend
-    captureBtn.addEventListener('click', () => {
-        console.log(`Submitting face data for userId=${userId}, userType=${userType}`);
+            // Display user info
+            document.getElementById('displayUserId').textContent = userId || 'Not provided';
+            document.getElementById('displayUserType').textContent = userType || 'Not provided';
 
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const imageData = canvas.toDataURL('image/jpeg');
-
-        fetch('/api/face-register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, userType, token, imageData })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                status.innerText = '✅ Face Registration Completed';
-                status.style.color = 'green';
-
-                // Redirect to login page after 2 seconds
-                setTimeout(() => {
-                    window.location.href = '/login.html'; // change path if needed
-                }, 2000);
-            } else {
-                status.innerText = '❌ ' + (data.error || 'Unknown error');
-                status.style.color = 'red';
+            // Validate required parameters
+            if (!userId || !userType || !token) {
+                showStatus('Missing required parameters. Please use a valid registration link.', 'error');
+                return;
             }
-        })
-        .catch(err => {
-            console.error('Error submitting face data:', err);
-            status.innerText = '❌ Failed to submit face data';
-            status.style.color = 'red';
-        });
-    });
-});
-</script>
 
+            // Load face-api models
+            try {
+                showStatus('Loading face detection models...', 'info');
+                
+                // Try loading models from multiple sources
+                const modelPath = '/models'; // Your model path
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(modelPath).catch(() => 
+                        faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models')
+                    )
+                ]);
+                
+                faceApiLoaded = true;
+                showStatus('Face detection ready!', 'info');
+                startCamera();
+            } catch (error) {
+                console.error('Error loading face-api models:', error);
+                showStatus('Error loading face detection. Please refresh the page.', 'error');
+            }
+
+            // Start camera function
+            async function startCamera() {
+                try {
+                    showStatus('Requesting camera access...', 'info');
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user'
+                        } 
+                    });
+                    
+                    video.srcObject = stream;
+                    
+                    video.addEventListener('loadedmetadata', () => {
+                        cameraReady = true;
+                        captureBtn.disabled = false;
+                        captureText.textContent = 'Capture Face';
+                        showStatus('Camera ready! Position your face and click capture.', 'info');
+                        
+                        if (faceApiLoaded) {
+                            startFaceDetection();
+                        }
+                    });
+                    
+                } catch (error) {
+                    console.error('Camera error:', error);
+                    showStatus('Camera access denied or not available. Please check permissions.', 'error');
+                    captureText.textContent = 'Camera Error';
+                }
+            }
+
+            // Face detection overlay
+            function startFaceDetection() {
+                if (!faceApiLoaded || !cameraReady) return;
+                
+                const canvas = faceapi.createCanvasFromMedia(video);
+                const overlay = document.getElementById('overlay');
+                overlay.replaceWith(canvas);
+                canvas.id = 'overlay';
+                canvas.className = 'absolute top-0 left-0 rounded-lg pointer-events-none';
+                
+                const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
+                faceapi.matchDimensions(canvas, displaySize);
+
+                detectionInterval = setInterval(async () => {
+                    try {
+                        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
+                            inputSize: 416,
+                            scoreThreshold: 0.5
+                        }));
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        
+                        if (detections.length > 0) {
+                            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                            faceapi.draw.drawDetections(canvas, resizedDetections);
+                        }
+                    } catch (error) {
+                        console.error('Detection error:', error);
+                    }
+                }, 100);
+            }
+
+            // Capture button handler
+            captureBtn.addEventListener('click', async () => {
+                if (!cameraReady) {
+                    showStatus('Camera not ready. Please wait.', 'error');
+                    return;
+                }
+
+                captureBtn.disabled = true;
+                captureText.textContent = 'Processing...';
+                
+                try {
+                    // Create canvas and capture image
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+                    showStatus('Submitting face data...', 'info');
+
+                    // Submit to server
+                    const response = await fetch('/api/face-register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            userId: userId, 
+                            userType: userType, 
+                            token: token, 
+                            imageData: imageData 
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showStatus('✅ Face registration completed successfully!', 'success');
+                        captureText.textContent = 'Registration Complete';
+                        
+                        // Stop camera and detection
+                        if (detectionInterval) {
+                            clearInterval(detectionInterval);
+                        }
+                        if (video.srcObject) {
+                            video.srcObject.getTracks().forEach(track => track.stop());
+                        }
+                        
+                        // Redirect after delay
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 3000);
+                        
+                    } else {
+                        throw new Error(result.error || 'Registration failed');
+                    }
+
+                } catch (error) {
+                    console.error('Capture error:', error);
+                    showStatus(`❌ Registration failed: ${error.message}`, 'error');
+                    captureBtn.disabled = false;
+                    captureText.textContent = 'Try Again';
+                    retryBtn.style.display = 'block';
+                }
+            });
+
+            // Retry button handler
+            retryBtn.addEventListener('click', () => {
+                captureBtn.disabled = false;
+                captureText.textContent = 'Capture Face';
+                retryBtn.style.display = 'none';
+                showStatus('Ready to capture again.', 'info');
+            });
+
+            // Utility function to show status messages
+            function showStatus(message, type = 'info') {
+                statusContainer.innerHTML = `
+                    <div class="status-message status-${type}">
+                        ${message}
+                    </div>
+                `;
+                console.log(`[${type.toUpperCase()}] ${message}`);
+            }
+
+            // Clean up on page unload
+            window.addEventListener('beforeunload', () => {
+                if (detectionInterval) {
+                    clearInterval(detectionInterval);
+                }
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+            });
+        });
+    </script>
 </body>
 </html>

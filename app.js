@@ -4,8 +4,9 @@ const path = require('path');
 const app = express();
 
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 
 app.use(session({
     secret: 'tinkuu',
@@ -32,6 +33,7 @@ app.use('/', adminRoutes);
 app.get('/faceRegistration.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'faceRegistration.html'));
 });
+app.use('/models', express.static(path.join(__dirname, 'models')));
 
 
 app.listen(3000, () => {
