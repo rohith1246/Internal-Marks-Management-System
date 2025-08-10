@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Face Registration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg text-center">
+        <h2 class="text-xl font-bold mb-4">Face Registration</h2>
+        
+        <video id="video" autoplay playsinline class="mx-auto rounded-lg border"></video>
+        <canvas id="canvas" class="hidden"></canvas>
+        
+        <div class="mt-4">
+            <button id="capture" class="bg-blue-500 text-white px-4 py-2 rounded">Capture Face</button>
+            <button id="submit" class="hidden bg-green-500 text-white px-4 py-2 rounded ml-2">Submit</button>
+        </div>
+        
+        <p id="status" class="mt-4 text-sm text-gray-700"></p>
+    </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const video = document.getElementById('camera');
+    const captureBtn = document.getElementById('captureBtn');
+    const status = document.getElementById('status');
+
+    // Extract URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('userId');
+    const userType = urlParams.get('userType');
+    const token = urlParams.get('token');
+
+    // Request camera access
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            video.srcObject = stream;
+            console.log('Camera access granted');
+        })
+        .catch(err => {
+            console.error('Camera access denied:', err);
+            status.innerText = '❌ Camera access denied';
+            status.style.color = 'red';
+        });
+
+    // Capture image and send to backend
+    captureBtn.addEventListener('click', () => {
+        console.log(`Submitting face data for userId=${userId}, userType=${userType}`);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData = canvas.toDataURL('image/jpeg');
+
+        fetch('/api/face-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, userType, token, imageData })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                status.innerText = '✅ Face Registration Completed';
+                status.style.color = 'green';
+
+                // Redirect to login page after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/login.html'; // change path if needed
+                }, 2000);
+            } else {
+                status.innerText = '❌ ' + (data.error || 'Unknown error');
+                status.style.color = 'red';
+            }
+        })
+        .catch(err => {
+            console.error('Error submitting face data:', err);
+            status.innerText = '❌ Failed to submit face data';
+            status.style.color = 'red';
+        });
+    });
+});
+</script>
+
+</body>
+</html>

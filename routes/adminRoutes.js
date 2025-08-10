@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { getConnection } = require('../db');
 const path = require('path');
+const fs = require('fs').promises;
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // Middleware to validate required fields
 const validateRequiredFields = (fields, body, res) => {
@@ -12,6 +15,15 @@ const validateRequiredFields = (fields, body, res) => {
     }
     return null;
 };
+router.get('/face', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'login.html'), (err) => {
+        if (err) {
+            console.error('Error sending login.html:', err);
+            res.status(500).send('Error loading login page');
+        }
+    });
+});
+
 
 // Admin Registration (removed duplicate /reg route)
 router.post('/adminreg', (req, res) => {
@@ -763,6 +775,252 @@ router.get('/timetables/faculty', (req, res) => {
         console.log('Faculty Timetable Query Result:', result); // Log the result
         res.json(result);
         con.end();
+    });
+});
+// Email configuration
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: '1234maharshi@gmail.com',
+        pass: 'mrxfwhabyryygqiw'
+    }
+});
+
+// Send face registration links via email
+router.post('/send-face-reg-links', async (req, res) => {
+    try {
+        const con = getConnection();
+
+        // Gather all users
+        const queries = [
+            `SELECT hod_id AS id, hod_email AS email, 'hod' AS type FROM Department_HOD`,
+            `SELECT faculty_id AS id, email, 'faculty' AS type FROM Faculty`,
+            `SELECT roll_number AS id, email, 'student' AS type FROM Students`
+        ];
+
+        let users = [];
+        for (const query of queries) {
+            const rows = await new Promise((resolve, reject) => {
+                con.query(query, (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+            users = users.concat(rows);
+        }
+
+        // Configure mail sender
+        const transporter = nodemailer.createTransport({
+            service: 'Gmail', // Change to your mail service
+            auth: {
+                user: 'YOUR_EMAIL@gmail.com',
+                pass: 'YOUR_PASSWORD'
+            }
+        });
+
+        // Send each user a personalized link
+        for (const user of users) {
+            const link = `http://YOUR_DOMAIN/faceRegistration.html?userId=${user.id}&userType=${user.type}`;
+            await transporter.sendMail({
+                from: 'YOUR_EMAIL@gmail.com',
+                to: user.email,
+                subject: 'Face Registration Link',
+                html: `<p>Please complete your face registration by clicking the link below:</p>
+                       <a href="${link}">${link}</a>`
+            });
+        }
+
+        con.end();
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('Error sending face registration links:', err);
+        return res.status(500).json({ error: 'Failed to send face registration links' });
+    }
+});
+
+// Update /generate-face-link route
+router.post('/generate-face-link', (req, res) => {
+    const { userId, userType } = req.body;
+    const validationError = validateRequiredFields(['userId', 'userType'], req.body, res);
+    if (validationError) return validationError;
+
+    if (!['student', 'faculty', 'hod'].includes(userType)) {
+        return res.status(400).json({ error: 'Invalid user type' });
+    }
+
+    const con = getConnection();
+    let table, emailField, idField;
+    switch (userType) {
+        case 'student':
+            table = 'Students';
+            idField = 'roll_number';
+            emailField = 'email';
+            break;
+        case 'faculty':
+            table = 'Faculty';
+            idField = 'faculty_id';
+            emailField = 'email';
+            break;
+        case 'hod':
+            table = 'Department_HOD';
+            idField = 'hod_id';
+            emailField = 'hod_email';
+            break;
+    }
+
+    con.query(`SELECT ${emailField} FROM ${table} WHERE ${idField} = ?`, [userId], (err, result) => {
+        if (err) {
+            console.error('Query error:', err);
+            con.end();
+            return res.status(500).json({ error: 'Query failed' });
+        }
+        if (result.length === 0) {
+            con.end();
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const email = result[0][emailField];
+        const token = crypto.randomBytes(32).toString('hex');
+        // Use actual domain in production
+        const link = `http://${req.headers.host}/faceRegistration.html?userId=${userId}&userType=${userType}&token=${token}`;
+
+        // Store token in database
+        con.query(
+            'INSERT INTO face_tokens (user_id, user_type, token, created_at) VALUES (?, ?, ?, NOW())',
+            [userId, userType, token],
+            (err) => {
+                if (err) {
+                    console.error('Token insert error:', err);
+                    con.end();
+                    return res.status(500).json({ error: 'Failed to generate link' });
+                }
+
+                // Send email
+                const mailOptions = {
+                    from: '1234maharshi@gmail.com', // Use same email as transporter
+                    to: email,
+                    subject: 'Face Registration Link',
+                    text: `Please use this link to register your face: ${link}\nLink valid for 24 hours.`
+                };
+
+                transporter.sendMail(mailOptions, (err) => {
+                    if (err) {
+                        console.error('Email error:', err);
+                        con.end();
+                        return res.status(500).json({ error: 'Failed to send email' });
+                    }
+                    res.json({ success: true, message: 'Face registration link sent' });
+                    con.end();
+                });
+            }
+        );
+    });
+});
+
+// Add token validation endpoint
+router.get('/validate-token', (req, res) => {
+    const { userId, userType, token } = req.query;
+    
+    const con = getConnection();
+    con.query(
+        'SELECT * FROM face_tokens WHERE user_id = ? AND user_type = ? AND token = ? AND created_at > NOW() - INTERVAL 1 DAY',
+        [userId, userType, token],
+        (err, result) => {
+            con.end();
+            if (err) return res.status(500).json({ error: 'Database error' });
+            if (result.length === 0) return res.status(400).json({ valid: false });
+            res.json({ valid: true });
+        }
+    );
+});
+
+
+router.post('/face-register', async (req, res) => {
+    console.log("📸 Face registration request received");
+
+    const { userId, userType, imageData } = req.body;
+
+    // Validate input
+    if (!userId || !userType || !imageData) {
+        console.error("❌ Missing required fields:", { userId, userType, imageData: !!imageData });
+        return res.status(400).json({ error: 'Missing required fields (userId, userType, imageData)' });
+    }
+
+    try {
+        // Decode Base64 image
+        const base64Content = imageData.split(',')[1];
+        if (!base64Content) {
+            console.error("❌ Invalid image data format");
+            return res.status(400).json({ error: 'Invalid image format' });
+        }
+        const imageBuffer = Buffer.from(base64Content, 'base64');
+
+        // Ensure save directory exists
+        const dirPath = path.join(__dirname, '..', 'face_data');
+        await fs.mkdir(dirPath, { recursive: true });
+        console.log("📂 Save directory ensured:", dirPath);
+
+        // Save file
+        const filePath = path.join(dirPath, `${userType}_${userId}.jpg`);
+        await fs.writeFile(filePath, imageBuffer);
+        console.log(`✅ Image saved successfully: ${filePath}`);
+
+        // OPTIONAL: Update DB here if needed
+        // await YourModel.update({ ... });
+
+        return res.json({ success: true, message: 'Face registered successfully!' });
+    } catch (err) {
+        console.error("💥 Error saving face image:", err);
+        return res.status(500).json({ error: `Failed to save face image: ${err.message}` });
+    }
+});
+router.post('/send-all-face-links', async (req, res) => {
+    try {
+        // 1. Fetch all users (students, faculty, HOD)
+        const users = await YourUserModel.find({}); // adjust query if needed
+        if (!users.length) {
+            return res.status(400).json({ success: false, error: 'No users found' });
+        }
+
+        // 2. Loop through and send links
+        for (const user of users) {
+            const token = generateSecureToken(user.userId); // your existing token function
+            const link = `http://127.0.0.1:3000/faceRegistration.html?userId=${user.userId}&userType=${user.userType}&token=${token}`;
+
+            // Example: send via email (replace with your actual send function)
+            await sendEmail(user.email, 'Face Registration Link', `Click here to register your face: ${link}`);
+
+            console.log(`✅ Link sent to ${user.userType} ${user.userId}`);
+        }
+
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('Error sending face links:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
+
+// Verify faculty face for marks entry
+router.post('/verify-faculty-face', (req, res) => {
+    const { facultyId, imageData } = req.body;
+    const validationError = validateRequiredFields(['facultyId', 'imageData'], req.body, res);
+    if (validationError) return validationError;
+
+    // Call Python service
+    const axios = require('axios');
+    axios.post('http://localhost:5001/verify-face', {
+        userId: facultyId,
+        userType: 'faculty',
+        imageData
+    })
+    .then(response => {
+        res.json({ verified: response.data.verified });
+    })
+    .catch(err => {
+        console.error('Verification error:', err);
+        res.status(500).json({ error: 'Face verification failed' });
     });
 });
 module.exports = router;

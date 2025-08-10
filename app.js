@@ -28,9 +28,13 @@ app.use('/', authRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', hodRoutes);
 app.use('/api', facultyRoutes);
+app.use('/', adminRoutes);
+app.get('/faceRegistration.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'faceRegistration.html'));
+});
 
 
-app.listen(5660, () => {
+app.listen(3000, () => {
     console.log("Server running on port 5660");
 });
 
