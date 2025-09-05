@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const axios = require('axios');
+
 
 // Middleware to validate required fields
 const validateRequiredFields = (fields, body, res) => {
@@ -935,45 +937,38 @@ router.get('/validate-token', (req, res) => {
 });
 
 
-router.post('/face-register', async (req, res) => {
-    console.log("📸 Face registration request received");
-
-    const { userId, userType, imageData } = req.body;
-
-    // Validate input
-    if (!userId || !userType || !imageData) {
-        console.error("❌ Missing required fields:", { userId, userType, imageData: !!imageData });
-        return res.status(400).json({ error: 'Missing required fields (userId, userType, imageData)' });
-    }
-
+// Face Registration + Auto Train
+router.post('/api/face-register', async (req, res) => {
     try {
-        // Decode Base64 image
-        const base64Content = imageData.split(',')[1];
-        if (!base64Content) {
-            console.error("❌ Invalid image data format");
-            return res.status(400).json({ error: 'Invalid image format' });
+        // 1. Register face in Python
+        const registerResp = await axios.post('http://127.0.0.1:5001/api/face-register', req.body);
+
+        if (!registerResp.data.success) {
+            return res.status(500).json({ success: false, error: registerResp.data.error });
         }
-        const imageBuffer = Buffer.from(base64Content, 'base64');
 
-        // Ensure save directory exists
-        const dirPath = path.join(__dirname, '..', 'face_data');
-        await fs.mkdir(dirPath, { recursive: true });
-        console.log("📂 Save directory ensured:", dirPath);
+        console.log(`✅ Face saved for ${req.body.userType}_${req.body.userId}`);
 
-        // Save file
-        const filePath = path.join(dirPath, `${userType}_${userId}.jpg`);
-        await fs.writeFile(filePath, imageBuffer);
-        console.log(`✅ Image saved successfully: ${filePath}`);
+        // 2. Auto train after registration
+        const trainResp = await axios.post('http://127.0.0.1:5001/api/train-model');
 
-        // OPTIONAL: Update DB here if needed
-        // await YourModel.update({ ... });
+        if (!trainResp.data.success) {
+            return res.status(500).json({ success: false, error: "Face saved but training failed" });
+        }
 
-        return res.json({ success: true, message: 'Face registered successfully!' });
+        res.json({
+            success: true,
+            message: "Face registered & model updated",
+            trainInfo: trainResp.data
+        });
+
     } catch (err) {
-        console.error("💥 Error saving face image:", err);
-        return res.status(500).json({ error: `Failed to save face image: ${err.message}` });
+        console.error("❌ Face registration error:", err.message);
+        res.status(500).json({ success: false, error: "Face registration failed" });
     }
 });
+
+
 router.post('/send-all-face-links', async (req, res) => {
     try {
         // 1. Fetch all users (students, faculty, HOD)

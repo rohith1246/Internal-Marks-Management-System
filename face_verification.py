@@ -1,444 +1,445 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import cv2
 import numpy as np
 import os
 import base64
 import logging
-from PIL import Image
-import io
 import pickle
-
-try:
-    from flask_cors import CORS
-    CORS_AVAILABLE = True
-except ImportError:
-    CORS_AVAILABLE = False
-    print("WARNING: flask-cors not installed. Install with: pip install flask-cors")
+from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)
 
-if CORS_AVAILABLE:
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": "*",
-            "methods": ["GET", "POST", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Accept"]
-        }
-    })
-else:
-    @app.after_request
-    def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-        return response
-
-POSSIBLE_FACE_DIRS = [
-    'face_data',
-    '../face_data',
-    './face_data',
-    os.path.join(os.path.dirname(__file__), 'face_data'),
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'face_data')
-]
-
-FACE_DATA_DIR = None
-for path in POSSIBLE_FACE_DIRS:
-    abs_path = os.path.abspath(path)
-    if os.path.exists(abs_path):
-        FACE_DATA_DIR = abs_path
-        break
-if FACE_DATA_DIR is None:
-    FACE_DATA_DIR = os.path.abspath('face_data')
-    os.makedirs(FACE_DATA_DIR, exist_ok=True)
+# Configure directories with absolute paths
+BASE_DIR = r"D:\projec\Mini Project\Mini Project"
+ENCODINGS_DIR = os.path.join(BASE_DIR, "encodings")
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+os.makedirs(ENCODINGS_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-logger.info(f"Using FACE_DATA_DIR: {FACE_DATA_DIR}")
 
-# Initialize OpenCV face detector
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+# Face recognition threshold (adjusted for LBPH; lower values indicate better matches)
+RECOGNITION_THRESHOLD = 80.0
 
-def load_face_image(user_id, user_type):
-    """Load stored face image for a user."""
-    file_path = os.path.join(FACE_DATA_DIR, f'{user_type}_{user_id}.jpg')
-    logger.debug(f"Looking for face data at: {file_path}")
+def download_models():
+    """Download required models if they don't exist"""
+    import urllib.request
     
-    if not os.path.exists(file_path):
-        alt_paths = [
-            os.path.join(FACE_DATA_DIR, f'{user_id}.jpg'),
-            os.path.join(FACE_DATA_DIR, f'{user_type}_{user_id}.png'),
-            os.path.join(FACE_DATA_DIR, f'{user_id}.png')
-        ]
-        for alt in alt_paths:
-            if os.path.exists(alt):
-                file_path = alt
-                break
-        else:
-            logger.warning(f"No face data found for {user_type}_{user_id}")
-            return None
+    prototxt_path = os.path.join(MODEL_DIR, "deploy.prototxt")
+    caffe_model_path = os.path.join(MODEL_DIR, "res10_300x300_ssd_iter_140000.caffemodel")
+    
+    if not os.path.exists(prototxt_path):
+        logger.info("Downloading deploy.prototxt...")
+        urllib.request.urlretrieve(
+            "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
+            prototxt_path
+        )
+    
+    if not os.path.exists(caffe_model_path):
+        logger.info("Downloading res10_300x300_ssd_iter_140000.caffemodel...")
+        urllib.request.urlretrieve(
+            "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel",
+            caffe_model_path
+        )
 
-    try:
-        # Load image with OpenCV
-        image = cv2.imread(file_path)
-        if image is None:
-            # Try with PIL as fallback
-            pil_img = Image.open(file_path).convert('RGB')
-            image = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-        
-        logger.debug(f"Successfully loaded image: {image.shape}")
-        return image
+# Download models on startup
+download_models()
 
-    except Exception as e:
-        logger.error(f"Error loading image from {file_path}: {str(e)}")
-        return None
+# Load OpenCV's deep learning face detector
+prototxt_path = os.path.join(MODEL_DIR, "deploy.prototxt")
+caffe_model_path = os.path.join(MODEL_DIR, "res10_300x300_ssd_iter_140000.caffemodel")
+use_dnn = True
+try:
+    face_detector = cv2.dnn.readNetFromCaffe(prototxt_path, caffe_model_path)
+    logger.info("DNN face detector loaded successfully")
+except Exception as e:
+    logger.warning(f"Failed to load DNN face detector: {e}. Using Haar cascade as fallback.")
+    face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    use_dnn = False
+
+# Load OpenCV's face recognizer (LBPH)
+face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer_model_path = os.path.join(MODEL_DIR, "face_model.yml")
+label_encoder_path = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
 def decode_base64_image(image_data):
-    """Decode base64 image data"""
+    """Decode base64 string to OpenCV image"""
     try:
-        # Handle data URL format
         if ',' in image_data:
-            header, data = image_data.split(',', 1)
-            logger.debug(f"Image header: {header}")
-        else:
-            data = image_data
-        
-        # Decode base64
-        image_bytes = base64.b64decode(data)
-        
-        # Load with PIL and convert to OpenCV format
-        pil_image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-        
-        logger.debug(f"Successfully decoded base64 image: {opencv_image.shape}")
-        return opencv_image
-        
+            image_data = image_data.split(',')[1]
+        image_bytes = base64.b64decode(image_data)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if image is None:
+            raise ValueError("Could not decode image")
+        logger.debug(f"Image decoded: shape={image.shape}, dtype={image.dtype}")
+        return image
     except Exception as e:
-        logger.error(f"Error decoding base64 image: {str(e)}")
-        return None
+        logger.error(f"Error decoding base64 image: {e}")
+        raise
 
-def extract_face_features(image):
-    """Extract face features using basic OpenCV operations"""
+def detect_faces_dnn(image):
+    """Detect faces using deep neural network"""
+    h, w = image.shape[:2]
+    blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+    face_detector.setInput(blob)
+    detections = face_detector.forward()
+    faces = []
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > 0.5:
+            x1 = int(detections[0, 0, i, 3] * w)
+            y1 = int(detections[0, 0, i, 4] * h)
+            x2 = int(detections[0, 0, i, 5] * w)
+            y2 = int(detections[0, 0, i, 6] * h)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            if x2 > x1 and y2 > y1:
+                faces.append((x1, y1, x2-x1, y2-y1))
+    return faces
+
+def detect_faces_haar(image):
+    """Detect faces using Haar cascade (fallback)"""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    faces = face_detector.detectMultiScale(gray, 1.3, 5, minSize=(30, 30))
+    return faces
+
+def detect_faces(image):
+    """Detect faces using the best available method"""
+    faces = detect_faces_dnn(image) if use_dnn else detect_faces_haar(image)
+    logger.debug(f"Detected {len(faces)} faces")
+    return faces
+
+def preprocess_face(face_roi):
+    """Preprocess face for recognition"""
+    if len(face_roi.shape) == 3:
+        gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = face_roi
+    gray = cv2.resize(gray, (100, 100))
+    gray = cv2.equalizeHist(gray)
+    return gray
+
+def load_label_encoder():
+    """Load or create label encoder"""
+    if os.path.exists(label_encoder_path):
+        with open(label_encoder_path, 'rb') as f:
+            return pickle.load(f)
+    return {"labels": [], "mapping": {}}
+
+def save_label_encoder(encoder):
+    """Save label encoder"""
+    with open(label_encoder_path, 'wb') as f:
+        pickle.dump(encoder, f)
+
+def get_user_label(user_type, user_id):
+    """Get or create a numeric label for a user"""
+    encoder = load_label_encoder()
+    user_key = f"{user_type}_{user_id}"
+    if user_key not in encoder["mapping"]:
+        label = len(encoder["labels"])
+        encoder["mapping"][user_key] = label
+        encoder["labels"].append(user_key)
+        save_label_encoder(encoder)
+    return encoder["mapping"][user_key]
+
+def get_user_from_label(label):
+    """Get user info from numeric label"""
+    encoder = load_label_encoder()
+    if 0 <= label < len(encoder["labels"]):
+        user_key = encoder["labels"][label]
+        parts = user_key.split('_', 1)
+        return {"userType": parts[0], "userId": parts[1]}
+    return None
+
+def collect_training_data():
+    """Collect all face images for training"""
+    faces = []
+    labels = []
+    encoder = load_label_encoder()
+    for user_key in encoder["labels"]:
+        user_encodings_path = os.path.join(ENCODINGS_DIR, f"{user_key}.pkl")
+        if os.path.exists(user_encodings_path):
+            with open(user_encodings_path, 'rb') as f:
+                user_data = pickle.load(f)
+            for face_img in user_data["faces"]:
+                faces.append(face_img)
+                labels.append(encoder["mapping"][user_key])
+    return faces, labels
+
+def train_model():
+    """Train the face recognition model"""
     try:
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Detect faces
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.1, 
-            minNeighbors=5, 
-            minSize=(50, 50)
-        )
-        
+        faces, labels = collect_training_data()
         if len(faces) == 0:
-            return None, "No face detected"
-        
-        # Get the largest face
-        largest_face = max(faces, key=lambda x: x[2] * x[3])
-        x, y, w, h = largest_face
-        
-        # Extract face region with some padding
-        padding = 20
-        y1 = max(0, y - padding)
-        y2 = min(gray.shape[0], y + h + padding)
-        x1 = max(0, x - padding)
-        x2 = min(gray.shape[1], x + w + padding)
-        
-        face_roi = gray[y1:y2, x1:x2]
-        
-        # Resize to standard size
-        face_roi = cv2.resize(face_roi, (200, 200))
-        
-        # Apply histogram equalization for better feature extraction
-        face_roi = cv2.equalizeHist(face_roi)
-        
-        # Extract multiple types of features
-        features = []
-        
-        # 1. Histogram features (global intensity distribution)
-        hist = cv2.calcHist([face_roi], [0], None, [64], [0, 256])
-        hist = cv2.normalize(hist, hist).flatten()
-        features.extend(hist)
-        
-        # 2. Gradient features (edges and textures)
-        # Sobel X
-        sobelx = cv2.Sobel(face_roi, cv2.CV_64F, 1, 0, ksize=3)
-        sobelx_hist = cv2.calcHist([np.uint8(np.absolute(sobelx))], [0], None, [32], [0, 256])
-        sobelx_hist = cv2.normalize(sobelx_hist, sobelx_hist).flatten()
-        features.extend(sobelx_hist)
-        
-        # Sobel Y  
-        sobely = cv2.Sobel(face_roi, cv2.CV_64F, 0, 1, ksize=3)
-        sobely_hist = cv2.calcHist([np.uint8(np.absolute(sobely))], [0], None, [32], [0, 256])
-        sobely_hist = cv2.normalize(sobely_hist, sobely_hist).flatten()
-        features.extend(sobely_hist)
-        
-        # 3. Grid-based features (spatial information)
-        # Divide face into 4x4 grid and calculate mean intensity for each cell
-        h, w = face_roi.shape
-        grid_size = 4
-        cell_h, cell_w = h // grid_size, w // grid_size
-        
-        for i in range(grid_size):
-            for j in range(grid_size):
-                y1_cell = i * cell_h
-                y2_cell = (i + 1) * cell_h if i < grid_size - 1 else h
-                x1_cell = j * cell_w
-                x2_cell = (j + 1) * cell_w if j < grid_size - 1 else w
-                
-                cell = face_roi[y1_cell:y2_cell, x1_cell:x2_cell]
-                mean_intensity = np.mean(cell)
-                std_intensity = np.std(cell)
-                features.extend([mean_intensity, std_intensity])
-        
-        # 4. Simple texture features using variance filters
-        # Apply different sized variance filters
-        for kernel_size in [3, 5, 7]:
-            kernel = np.ones((kernel_size, kernel_size), np.float32) / (kernel_size * kernel_size)
-            mean_filtered = cv2.filter2D(face_roi.astype(np.float32), -1, kernel)
-            variance = (face_roi.astype(np.float32) - mean_filtered) ** 2
-            texture_hist = cv2.calcHist([np.uint8(variance)], [0], None, [16], [0, 256])
-            texture_hist = cv2.normalize(texture_hist, texture_hist).flatten()
-            features.extend(texture_hist)
-        
-        # Convert to numpy array
-        features = np.array(features, dtype=np.float32)
-        
-        logger.debug(f"Extracted {len(features)} features from face")
-        return features, face_roi
-        
+            logger.warning("No training data available")
+            return False, "No faces available for training"
+        logger.info(f"Training model with {len(faces)} samples from {len(set(labels))} users")
+        face_recognizer.train(faces, np.array(labels))
+        face_recognizer.save(recognizer_model_path)
+        logger.info(f"Model trained and saved with {len(faces)} samples")
+        return True, f"Model trained with {len(faces)} samples from {len(set(labels))} users"
     except Exception as e:
-        logger.error(f"Error extracting face features: {str(e)}")
-        return None, f"Feature extraction error: {str(e)}"
+        logger.error(f"Error training model: {e}")
+        return False, f"Training error: {str(e)}"
 
-def compare_face_features(features1, features2):
-    """Compare two sets of face features using multiple metrics"""
-    try:
-        # Ensure features are the same length
-        if len(features1) != len(features2):
-            logger.warning(f"Feature length mismatch: {len(features1)} vs {len(features2)}")
-            min_len = min(len(features1), len(features2))
-            features1 = features1[:min_len]
-            features2 = features2[:min_len]
-        
-        # Normalize features to unit vectors
-        norm1 = np.linalg.norm(features1)
-        norm2 = np.linalg.norm(features2)
-        
-        if norm1 == 0 or norm2 == 0:
-            return 0, 0, float('inf')
-        
-        features1_norm = features1 / norm1
-        features2_norm = features2 / norm2
-        
-        # 1. Cosine similarity
-        cosine_sim = np.dot(features1_norm, features2_norm)
-        
-        # 2. Euclidean distance (normalized)
-        euclidean_dist = np.linalg.norm(features1_norm - features2_norm)
-        euclidean_sim = 1.0 / (1.0 + euclidean_dist)  # Convert to similarity
-        
-        # 3. Correlation coefficient
-        correlation = np.corrcoef(features1, features2)[0, 1]
-        if np.isnan(correlation):
-            correlation = 0
-        
-        logger.debug(f"Similarity metrics - Cosine: {cosine_sim:.3f}, Euclidean: {euclidean_sim:.3f}, Correlation: {correlation:.3f}")
-        
-        return cosine_sim, euclidean_sim, correlation
-        
-    except Exception as e:
-        logger.error(f"Error comparing features: {str(e)}")
-        return 0, 0, 0
-
-def detect_and_compare_faces(stored_image, new_image_data, user_id, user_type):
-    """Compare faces using OpenCV-based approach"""
-    try:
-        # Decode the new image
-        new_image = decode_base64_image(new_image_data)
-        if new_image is None:
-            return False, "Failed to decode captured image"
-
-        logger.debug(f"Stored image shape: {stored_image.shape}")
-        logger.debug(f"New image shape: {new_image.shape}")
-
-        # Extract features from stored image
-        logger.debug("Extracting features from stored image...")
-        stored_features, stored_face = extract_face_features(stored_image)
-        if stored_features is None:
-            return False, f"No face detected in registered image: {stored_face}"
-
-        # Extract features from new image
-        logger.debug("Extracting features from new image...")
-        new_features, new_face = extract_face_features(new_image)
-        if new_features is None:
-            return False, f"No face detected in captured image: {new_face}"
-
-        logger.debug(f"Stored features shape: {stored_features.shape}")
-        logger.debug(f"New features shape: {new_features.shape}")
-
-        # Compare features
-        cosine_sim, euclidean_sim, correlation = compare_face_features(stored_features, new_features)
-        
-        logger.debug(f"Cosine similarity: {cosine_sim:.3f}")
-        logger.debug(f"Euclidean similarity: {euclidean_sim:.3f}")
-        logger.debug(f"Correlation: {correlation:.3f}")
-
-        # Determine if faces match based on multiple metrics
-        # Thresholds (adjust these based on testing)
-        cosine_threshold = 0.75
-        euclidean_threshold = 0.4
-        correlation_threshold = 0.3
-        
-        matches = 0
-        total_tests = 3
-        
-        if cosine_sim >= cosine_threshold:
-            matches += 1
-        if euclidean_sim >= euclidean_threshold:
-            matches += 1
-        if correlation >= correlation_threshold:
-            matches += 1
-        
-        # Require at least 2 out of 3 tests to pass
-        is_match = matches >= 2
-        
-        confidence = matches / total_tests * 100
-        
-        if is_match:
-            logger.info(f"Face match found: {matches}/{total_tests} tests passed, confidence={confidence:.1f}%")
-            return True, f"Face verified successfully (confidence={confidence:.1f}%, cosine={cosine_sim:.3f}, euclidean={euclidean_sim:.3f}, corr={correlation:.3f})"
-        else:
-            logger.info(f"No face match: {matches}/{total_tests} tests passed, confidence={confidence:.1f}%")
-            return False, f"Face verification failed (confidence={confidence:.1f}%, cosine={cosine_sim:.3f}, euclidean={euclidean_sim:.3f}, corr={correlation:.3f})"
-        
-    except Exception as e:
-        logger.error(f"Error in face comparison: {str(e)}", exc_info=True)
-        return False, f"Error during comparison: {str(e)}"
-
-@app.route('/api/face-verify', methods=['POST', 'OPTIONS'])
-def face_verify():
-    """Face verification endpoint using OpenCV"""
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'OK'}), 200
-
+@app.route("/api/face-register", methods=["POST"])
+def face_register():
+    """Register a user's face by saving multiple training samples"""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'success': False, 'error': 'No JSON data received'}), 400
-            
-        user_id = data.get('userId')
-        user_type = data.get('userType')
-        image_data = data.get('imageData')
-
-        logger.info(f"=== Face verification request (OpenCV) ===")
-        logger.info(f"User: {user_type}_{user_id}")
-        logger.info(f"Image data length: {len(image_data) if image_data else 0}")
-
-        # Validate input
-        if not user_id or not user_type or not image_data:
-            return jsonify({'success': False, 'error': 'Missing required fields: userId, userType, or imageData'}), 400
-
-        # Load stored image
-        stored_image = load_face_image(user_id, user_type)
-        if stored_image is None:
-            return jsonify({'success': False, 'error': f'No registered face data found for {user_type}_{user_id}'}), 404
-
-        # Perform face comparison
-        verified, debug_info = detect_and_compare_faces(stored_image, image_data, user_id, user_type)
+        user_id = data.get("userId")
+        user_type = data.get("userType")
+        images_data = data.get("images", [])  # Expect array of images
         
-        logger.info(f"Verification result: {verified}, {debug_info}")
+        if not user_id or not user_type or not images_data:
+            return jsonify({
+                "success": False,
+                "error": "Missing required fields: userId, userType, images"
+            }), 400
+        
+        user_label = get_user_label(user_type, user_id)
+        user_key = f"{user_type}_{user_id}"
+        user_encodings_path = os.path.join(ENCODINGS_DIR, f"{user_key}.pkl")
+        
+        # Load existing user data
+        user_data = {"faces": [], "timestamps": []}
+        if os.path.exists(user_encodings_path):
+            with open(user_encodings_path, 'rb') as f:
+                user_data = pickle.load(f)
+        
+        # Limit to 50 images
+        remaining_slots = 50 - len(user_data["faces"])
+        if remaining_slots <= 0:
+            return jsonify({
+                "success": False,
+                "error": "Maximum 50 images reached for this user"
+            }), 400
+        
+        added_count = 0
+        for image_data in images_data[:remaining_slots]:
+            try:
+                image = decode_base64_image(image_data)
+                faces = detect_faces(image)
+                if len(faces) == 0:
+                    logger.debug("No face detected in image, skipping")
+                    continue
+                if len(faces) > 1:
+                    logger.warning(f"Multiple faces detected ({len(faces)}), using the largest one")
+                    faces = [max(faces, key=lambda rect: rect[2] * rect[3])]
+                
+                x, y, w, h = faces[0]
+                face_roi = image[y:y+h, x:x+w]
+                processed_face = preprocess_face(face_roi)
+                
+                user_data["faces"].append(processed_face)
+                user_data["timestamps"].append(datetime.now().isoformat())
+                added_count += 1
+            except Exception as e:
+                logger.error(f"Error processing image: {e}")
+                continue
+        
+        if added_count == 0:
+            return jsonify({
+                "success": False,
+                "error": "No valid faces detected in provided images"
+            }), 400
+        
+        # Save user data
+        with open(user_encodings_path, 'wb') as f:
+            pickle.dump(user_data, f)
+        
+        # Auto-train the model
+        success, message = train_model()
+        if not success:
+            logger.warning(f"Auto-training failed: {message}")
+        
+        samples_count = len(user_data["faces"])
+        logger.info(f"Added {added_count} face samples for {user_key}. Total samples: {samples_count}")
         
         return jsonify({
-            'success': True,
-            'verified': verified, 
-            'debug': debug_info,
-            'userId': user_id,
-            'userType': user_type,
-            'method': 'OpenCV'
-        }), 200
-        
+            "success": True,
+            "message": f"Added {added_count} face(s) successfully for {user_type} {user_id}",
+            "samples_count": samples_count,
+            "training_status": message
+        })
+    
     except Exception as e:
-        logger.error(f"Unexpected error in face verification: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': f'Server error: {str(e)}'}), 500
+        logger.error(f"Error in face_register: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error"
+        }), 500
 
-@app.route('/debug/test-opencv/<user_type>/<user_id>', methods=['GET'])
-def test_opencv_face_detection(user_type, user_id):
-    """Debug endpoint to test OpenCV face detection"""
+@app.route("/api/face-verify", methods=["POST"])
+def face_verify():
+    """Verify a user's face against the trained model"""
     try:
-        logger.info(f"Testing OpenCV face detection for {user_type}_{user_id}")
+        data = request.get_json()
+        user_id = data.get("userId")
+        user_type = data.get("userType")
+        image_data = data.get("imageData")
         
-        # Load the stored image
-        stored_image = load_face_image(user_id, user_type)
-        if stored_image is None:
-            return jsonify({'error': f'No image found for {user_type}_{user_id}'}), 404
-        
-        # Test face detection
-        features, face_roi = extract_face_features(stored_image)
-        
-        if features is None:
+        if not user_id or not user_type or not image_data:
             return jsonify({
-                'user_id': user_id,
-                'user_type': user_type,
-                'opencv_test_success': False,
-                'error': face_roi,
-                'image_shape': stored_image.shape
+                "success": False,
+                "error": "Missing required fields: userId, userType, imageData"
+            }), 400
+        
+        if not os.path.exists(recognizer_model_path):
+            return jsonify({
+                "success": False,
+                "error": "Face recognition model not trained yet"
+            }), 404
+        
+        face_recognizer.read(recognizer_model_path)
+        image = decode_base64_image(image_data)
+        faces = detect_faces(image)
+        
+        if len(faces) == 0:
+            return jsonify({
+                "success": False,
+                "error": "No face detected"
+            }), 400
+        
+        if len(faces) > 1:
+            logger.warning(f"Multiple faces detected ({len(faces)}), using the largest one")
+            faces = [max(faces, key=lambda rect: rect[2] * rect[3])]
+        
+        x, y, w, h = faces[0]
+        face_roi = image[y:y+h, x:x+w]
+        processed_face = preprocess_face(face_roi)
+        
+        predicted_label, confidence = face_recognizer.predict(processed_face)
+        expected_label = get_user_label(user_type, user_id)
+        verified = (predicted_label == expected_label and confidence < RECOGNITION_THRESHOLD)
+        predicted_user = get_user_from_label(predicted_label)
+        
+        logger.info(f"Face verification for {user_type}_{user_id}: "
+                   f"predicted={predicted_user}, confidence={confidence:.3f}, "
+                   f"verified={verified}")
+        
+        return jsonify({
+            "success": True,
+            "verified": verified,
+            "confidence": float(confidence),
+            "predicted_user": predicted_user,
+            "threshold": RECOGNITION_THRESHOLD
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in face_verify: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error"
+        }), 500
+
+@app.route("/api/recognize-face", methods=["POST"])
+def recognize_face():
+    """Recognize a face from the trained model"""
+    try:
+        data = request.get_json()
+        image_data = data.get("imageData")
+        
+        if not image_data:
+            return jsonify({
+                "success": False,
+                "error": "Missing required field: imageData"
+            }), 400
+        
+        if not os.path.exists(recognizer_model_path):
+            return jsonify({
+                "success": False,
+                "error": "Face recognition model not trained yet"
+            }), 404
+        
+        face_recognizer.read(recognizer_model_path)
+        image = decode_base64_image(image_data)
+        faces = detect_faces(image)
+        
+        if len(faces) == 0:
+            return jsonify({
+                "success": False,
+                "error": "No face detected"
+            }), 400
+        
+        results = []
+        for i, (x, y, w, h) in enumerate(faces):
+            face_roi = image[y:y+h, x:x+w]
+            processed_face = preprocess_face(face_roi)
+            predicted_label, confidence = face_recognizer.predict(processed_face)
+            predicted_user = get_user_from_label(predicted_label)
+            recognized = confidence < RECOGNITION_THRESHOLD
+            
+            results.append({
+                "face_id": i,
+                "bounding_box": [int(x), int(y), int(w), int(h)],
+                "recognized": recognized,
+                "confidence": float(confidence),
+                "user": predicted_user if recognized else None
             })
         
-        return jsonify({
-            'user_id': user_id,
-            'user_type': user_type,
-            'opencv_test_success': True,
-            'features_extracted': len(features),
-            'face_roi_shape': face_roi.shape,
-            'image_shape': stored_image.shape
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in OpenCV test: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/debug/face-data', methods=['GET'])
-def debug_face_data():
-    """Debug endpoint to list available face data"""
-    try:
-        files = []
-        if os.path.exists(FACE_DATA_DIR):
-            for filename in os.listdir(FACE_DATA_DIR):
-                if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-                    file_path = os.path.join(FACE_DATA_DIR, filename)
-                    stat = os.stat(file_path)
-                    files.append({
-                        'filename': filename,
-                        'size': stat.st_size,
-                        'modified': stat.st_mtime
-                    })
+        logger.info(f"Face recognition completed: {len([r for r in results if r['recognized']])}/{len(results)} faces recognized")
         
         return jsonify({
-            'face_data_dir': FACE_DATA_DIR,
-            'files': files,
-            'total_files': len(files),
-            'method': 'OpenCV',
-            'opencv_version': cv2.__version__
+            "success": True,
+            "results": results
         })
+    
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error in recognize_face: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error"
+        }), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
+@app.route("/health", methods=["GET"])
+def health():
     """Health check endpoint"""
+    encoder = load_label_encoder()
+    total_samples = sum(len(pickle.load(open(os.path.join(ENCODINGS_DIR, f"{user}.pkl"), 'rb'))["faces"])
+                        for user in encoder["labels"]
+                        if os.path.exists(os.path.join(ENCODINGS_DIR, f"{user}.pkl")))
+    
     return jsonify({
-        'status': 'healthy',
-        'face_data_dir': FACE_DATA_DIR,
-        'face_data_exists': os.path.exists(FACE_DATA_DIR),
-        'method': 'OpenCV',
-        'opencv_version': cv2.__version__
+        "status": "ok",
+        "encodings_dir": ENCODINGS_DIR,
+        "registered_users": len(encoder["labels"]),
+        "total_samples": total_samples,
+        "model_trained": os.path.exists(recognizer_model_path),
+        "threshold": RECOGNITION_THRESHOLD,
+        "detection_method": "dnn" if use_dnn else "haar",
+        "recognition_method": "LBPH",
+        "opencv_version": cv2.__version__
     })
 
-if __name__ == '__main__':
-    print(f"Starting OpenCV-based face verification service")
-    print(f"Face data directory: {FACE_DATA_DIR}")
-    print(f"OpenCV version: {cv2.__version__}")
-    print(f"Debug endpoint: http://localhost:5001/debug/test-opencv/<user_type>/<user_id>")
-    print(f"Health check: http://localhost:5001/health")
-    app.run(host='0.0.0.0', port=5001, debug=True)
+@app.route("/api/users", methods=["GET"])
+def get_registered_users():
+    """Get list of all registered users"""
+    encoder = load_label_encoder()
+    users = []
+    for user_key in encoder["labels"]:
+        user_encodings_path = os.path.join(ENCODINGS_DIR, f"{user_key}.pkl")
+        samples_count = 0
+        if os.path.exists(user_encodings_path):
+            with open(user_encodings_path, 'rb') as f:
+                user_data = pickle.load(f)
+            samples_count = len(user_data["faces"])
+        parts = user_key.split('_', 1)
+        users.append({
+            "userType": parts[0],
+            "userId": parts[1],
+            "samples": samples_count
+        })
+    
+    return jsonify({
+        "success": True,
+        "users": users
+    })
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=True)
